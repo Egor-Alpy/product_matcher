@@ -27,6 +27,10 @@ services:
     environment:
       - ELASTICSEARCH_HOST=elasticsearch
       - ELASTICSEARCH_PORT=9200
+      - MONGO_HOST=host.docker.internal  # Для подключения к локальной MongoDB
+      - MONGO_PORT=27017
+      - MONGO_DB_NAME=local
+      - MONGO_COLLECTION_NAME_DATASET=diversified_products
     ports:
       - "8080:8080"
     depends_on:

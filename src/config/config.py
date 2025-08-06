@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     API_PORT: int = 8080
     API_LOG_LEVEL: str = "info"
 
+    # Настройка подключения к Elasticsearch
+    ELASTICSEARCH_HOST: str = 'localhost'
+    ELASTICSEARCH_PORT: str = '9200'
+    ELASTICSEARCH_INDEX: str = 'products'
+
     # Настройка подключения к MongoDB
     MONGO_HOST: str = 'localhost'
     MONGO_PORT: int = 27017
