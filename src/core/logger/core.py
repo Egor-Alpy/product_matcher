@@ -2,8 +2,6 @@ import inspect
 import logging
 import os
 
-from src.config.config import settings
-
 
 class ContextLogger:
     def __init__(self, format: str, project_name: str, level: int):
@@ -12,7 +10,7 @@ class ContextLogger:
     @staticmethod
     def setup_logger(
             format: str = '%(asctime).19s | %(levelname).3s | %(message)s',
-            logger_name: str = settings.PROJECT_NAME,
+            logger_name: str = 'base_logger',
             level: int = logging.DEBUG
         ) -> logging.Logger:
         """Настройка логера"""

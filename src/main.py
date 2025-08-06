@@ -1,16 +1,20 @@
-import asyncio
+import os
+import sys
+
 import uvicorn
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.config.config import settings
-from src.core.logger import get_logger
-from src.api.router import router
+from config.config import settings
+from core.logger import get_logger
+from api.router import router
 
 logger = get_logger(name=__name__)
 
+# Добавляем корневую папку проекта в sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
