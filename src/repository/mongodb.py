@@ -1,3 +1,5 @@
+from typing import Optional
+
 import voyageai
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -10,9 +12,9 @@ logger = get_logger(name='mongodb')
 
 class MongoDb:
     def __init__(self):
-        self.client = AsyncIOMotorClient(settings.MONGO_CONNECTION_LINK_ATLAS)
+        self.client = AsyncIOMotorClient(settings.get_mongo_connection_link)
         self.db = self.client[settings.MONGO_DB_NAME]
-        self.collection = self.db[settings.MONGO_COLLECTION_NAME_VECTOR_CATEGORIES]
+        self.collection = self.db[settings.MONGO_COLLECTION_NAME_DATASET]
 
     async def create_vector_index(self):
         """Создать векторный поисковой индекс в MongoDB"""

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     MONGO_HOST: str = 'localhost'
     MONGO_PORT: int = 27017
     MONGO_DB_NAME: str = 'local'
+    MONGO_COLLECTION_NAME_DATASET: str = 'diversified_products'
     MONGO_COLLECTION_NAME_CATEGORIES: str = 'yandex_categories'
     MONGO_COLLECTION_NAME_ATTRIBUTES: str = 'yandex_attributes'
 
