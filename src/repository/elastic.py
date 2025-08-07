@@ -11,7 +11,6 @@ class ElasticSearch:
 
     def __init__(self):
         self.es_client = self._get_client
-        self.index_name = settings.ELASTICSEARCH_INDEX
         self.connection_attempts = settings.ES_MAX_RETRIES
 
     @property
@@ -33,6 +32,8 @@ class ElasticSearch:
                 logger.info("Соединение с Elasticsearch закрыто")
             except Exception as e:
                 logger.error(f"Ошибка при закрытии соединения с Elasticsearch: {e}")
+                return False
+        return True
 
     def is_connected(self) -> bool:
         """Проверка активного подключения"""
@@ -64,6 +65,23 @@ class ElasticSearch:
                                 "russian_stop",
                                 "russian_stemmer"
                             ]
+                        },
+                        "autocomplete_analyzer": {
+                            "type": "custom",
+                            "tokenizer": "standard",
+                            "filter": [
+                                "lowercase",
+                                "asciifolding",
+                                "edge_ngram_filter"
+                            ]
+                        },
+                        "autocomplete_search": {
+                            "type": "custom",
+                            "tokenizer": "standard",
+                            "filter": [
+                                "lowercase",
+                                "asciifolding"
+                            ]
                         }
                     },
                     "filter": {
@@ -74,6 +92,11 @@ class ElasticSearch:
                         "russian_stemmer": {
                             "type": "stemmer",
                             "language": "russian"
+                        },
+                        "edge_ngram_filter": {
+                            "type": "edge_ngram",
+                            "min_gram": 2,
+                            "max_gram": 20
                         }
                     }
                 }
@@ -110,10 +133,11 @@ class ElasticSearch:
                             }
                         }
                     },
-                    "entity_id"
-                    # Плоские атрибуты для быстрого поиска
-                    "flat_attributes": {
-                        "type": "flattened"
+                    "entity_id": {
+                        "type": "keyword"
+                    },
+                    "entity_type": {
+                        "type": "keyword"
                     }
                 }
             }
@@ -134,27 +158,70 @@ class ElasticSearch:
             logger.error(f"Ошибка создания индекса {index_name}: {e}")
             return False
 
-    def add_documents(self):
-        pass
+    def add_documents(self, index_name: str, docs: dict[str, str]):
+        for doc in docs:
+            self.es_client.index(index=index_name, body=doc)
 
-    def count_documents(self) -> Optional[int]:
+        result = self.es_client.count(index=index_name)
+        logger.debug(f"Всего документов после добавления: {result['count']}")
+
+    def add_document(self, index_name: str, document: dict[str, str]):
+        self.es_client.index(index=index_name, document=document)
+        return True
+
+    def is_index_exists(self, index_name: str) -> bool:
+        return self.es_client.indices.exists(index=index_name)
+
+    def search_document(self, index_name: str, query: dict[str, str]):
+        query_body = {
+              "query": {
+                "simple_query_string": {
+                  "query": f"{list(query.keys())[0]}",
+                  "fields": ["*", "*.value"],
+                  "default_operator": "or"
+                }
+              }
+            }
+        logger.info(f"query: {query_body}")
+        response = self.es_client.search(index=index_name, body=query_body)
+        logger.info(f"RESPONSE: {response}")
+        return response
+
+    def search_document_fuzzy(self, index_name: str, query: dict[str, str]):
+
+        query_body = {
+              "query": {
+                "match": {
+                  "attr_name": {
+                    "query": f"{list(query.keys())[0]}",
+                    "fuzziness": "AUTO",
+                    "minimum_should_match": "30%"
+                  }
+                }
+              }
+            }
+        logger.info(f"query: {query_body}")
+        response = self.es_client.search(index=index_name, body=query_body)
+        logger.info(f"RESPONSE: {response}")
+        return response
+
+    def count_documents(self, index_name) -> Optional[int]:
         """Подсчитываем документы в индексе"""
         try:
-            result = self.es_client.count(index=self.index_name)
+            result = self.es_client.count(index=index_name)
             return result['count']
         except Exception as e:
-            print(f"Ошибка при подсчете документов: {e}")
+            logger.error(f"Ошибка при подсчете документов: {e}")
             return None
 
-    def get_index_info(self):
+    def get_index_info(self, index_name: str):
         """Получить информацию об индексе"""
         try:
-            index_name = self.index_name
             if not self.es_client.indices.exists(index=index_name):
-                logger.info()
-                return f"Индекс '{index_name}' не существует"
+                logger.info(f"Индекс '{index_name}' не существует")
+                return False
 
-            count = self.count_documents()
+            count = self.count_documents(index_name=index_name)
             stats = self.es_client.indices.stats(index=index_name)
 
             return {
@@ -164,99 +231,3 @@ class ElasticSearch:
             }
         except Exception as e:
             return f"Ошибка: {e}"
-
-mapping = {
-    "settings": {
-        "number_of_shards": 1,
-        "number_of_replicas": 0,
-        "analysis": {
-            "analyzer": {
-                "russian_analyzer": {
-                    "type": "custom",
-                    "tokenizer": "standard",
-                    "filter": [
-                        "lowercase",
-                        "asciifolding",
-                        "russian_stop",
-                        "russian_stemmer"
-                    ]
-                },
-                "autocomplete_analyzer": {
-                    "type": "custom",
-                    "tokenizer": "standard",
-                    "filter": [
-                        "lowercase",
-                        "asciifolding",
-                        "edge_ngram_filter"
-                    ]
-                }
-            },
-            "filter": {
-                "russian_stop": {
-                    "type": "stop",
-                    "stopwords": "_russian_"
-                },
-                "russian_stemmer": {
-                    "type": "stemmer",
-                    "language": "russian"
-                },
-                "edge_ngram_filter": {
-                    "type": "edge_ngram",
-                    "min_gram": 2,
-                    "max_gram": 20
-                }
-            }
-        }
-    },
-    "mappings": {
-        "properties": {
-            "attr_name": {
-                "type": "text",
-                "analyzer": "russian_analyzer",
-                "fields": {
-                    "keyword": {
-                        "type": "keyword"
-                    },
-                    "autocomplete": {
-                        "type": "text",
-                        "analyzer": "autocomplete_analyzer"
-                    }
-                }
-            },
-            "attr_value": {
-                "type": "text",
-                "analyzer": "russian_analyzer",
-                "fields": {
-                    "keyword": {
-                        "type": "keyword"
-                    },
-                    "autocomplete": {
-                        "type": "text",
-                        "analyzer": "autocomplete_analyzer"
-                    },
-                    "numeric": {
-                        "type": "double",
-                        "ignore_malformed": True
-                    }
-                }
-            },
-            "entity_id": {
-                "type": "keyword"
-            },
-            "entity_type": {
-                "type": "keyword"
-            }
-        }
-    }
-}
-
-es = ElasticSearch()
-print(f'connected: {es.is_connected()}')
-
-print(f'Создаем индекс в эластике: {es.create_index(index_name="testik")}')
-print(f'Количество документов в индексе {settings.ELASTICSEARCH_INDEX}: {es.count_documents()}')
-print(f'Информация по индексу {es.get_index_info()}')
-
-
-print(f'Закрытие соединения с эластиком: {es.close()}')
-

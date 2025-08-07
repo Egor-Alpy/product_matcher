@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.config.config import settings
 from src.core.logger import get_logger
 from src.api.router import router
-from src.services.elasticsearch_service import elasticsearch_service
+from src.services.elastic import elastic_search
 
 logger = get_logger(name=__name__)
 
@@ -26,51 +26,6 @@ async def lifespan(app: FastAPI):
     logger.info("⏳ Ожидание готовности Elasticsearch...")
     time.sleep(startup_delay)  # Даем время Elasticsearch полностью запуститься
 
-    for attempt in range(max_startup_retries):
-        logger.info(f"🔌 Попытка подключения к Elasticsearch ({attempt + 1}/{max_startup_retries})...")
-
-        try:
-            # Подключаемся к Elasticsearch
-            es_url = f'http://{settings.ELASTICSEARCH_HOST}:{settings.ELASTICSEARCH_PORT}'
-            es_connected = elasticsearch_service.connect([es_url])
-
-            if es_connected:
-                logger.info("✅ Elasticsearch подключен успешно!")
-                elasticsearch_connected = True
-
-                # Проверяем существование индекса
-                index_exists = elasticsearch_service.es.indices.exists(index=settings.ELASTICSEARCH_INDEX)
-                if not index_exists:
-                    logger.info(f"📝 Создание индекса '{settings.ELASTICSEARCH_INDEX}'...")
-                    index_created = elasticsearch_service.create_index(settings.ELASTICSEARCH_INDEX)
-                    if index_created:
-                        logger.info("✅ Индекс создан успешно")
-                    else:
-                        logger.warning("⚠️ Не удалось создать индекс")
-                else:
-                    logger.info(f"✅ Индекс '{settings.ELASTICSEARCH_INDEX}' уже существует")
-
-                # Получаем статистику
-                try:
-                    stats = elasticsearch_service.get_stats()
-                    logger.info(f"📊 Статистика Elasticsearch: {stats.get('documents_count', 0)} документов")
-                except Exception as e:
-                    logger.warning(f"⚠️ Не удалось получить статистику: {e}")
-
-                break
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка подключения к Elasticsearch (попытка {attempt + 1}): {e}")
-
-        if attempt < max_startup_retries - 1:
-            wait_time = min(5 + attempt, 15)  # Увеличиваем время ожидания
-            logger.info(f"⏳ Повторная попытка через {wait_time} секунд...")
-            time.sleep(wait_time)
-
-    if not elasticsearch_connected:
-        logger.error("❌ НЕ УДАЛОСЬ ПОДКЛЮЧИТЬСЯ К ELASTICSEARCH!")
-        logger.error("⚠️ Приложение будет работать, но функции поиска будут недоступны")
-
     logger.info("🎉 Приложение запущено успешно!")
 
     try:
@@ -82,9 +37,9 @@ async def lifespan(app: FastAPI):
         logger.info("🔄 Остановка приложения...")
 
         # Закрываем соединение с Elasticsearch
-        if elasticsearch_service.es:
+        if elastic_search.es:
             try:
-                elasticsearch_service.es.close()
+                elastic_search.es.close()
                 logger.info("✅ Соединение с Elasticsearch закрыто")
             except Exception as e:
                 logger.error(f"❌ Ошибка при закрытии соединения с Elasticsearch: {e}")

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     SOFTWARE_RESTART_TIME: int = 15  # Время (в СЕКУНДАХ) автоматического перезапуска софта после падения
 
     # Настройка логирования
-    LOG_LEVEL: str = "DEBUG"  # Доступные уровни логирования - DEBUG, INFO, WARNING, ERROR, FATAL
+    LOG_LEVEL: str = "INFO"  # Доступные уровни логирования - DEBUG, INFO, WARNING, ERROR, FATAL
     LOG_FORMAT: str = '%(asctime).19s | %(levelname).3s | %(message)s'  # Формат отображения логов
 
     # Настройка API (fastapi)
@@ -37,9 +37,10 @@ class Settings(BaseSettings):
     MONGO_HOST: str = 'localhost'
     MONGO_PORT: int = 27017
     MONGO_DB_NAME: str = 'local'
+    MONGO_COLLECTION_NAME_YNDX_CATEGORIES: str = 'yandex_categories'
+    MONGO_COLLECTION_NAME_ATTRIBUTES: str = 'yandex_attributes'
     MONGO_COLLECTION_NAME_DATASET: str = 'diversified_products'
     MONGO_COLLECTION_NAME_CATEGORIES: str = 'yandex_categories'
-    MONGO_COLLECTION_NAME_ATTRIBUTES: str = 'yandex_attributes'
 
     # Получение ссылки для подключения к MongoDB
     @property
