@@ -8,13 +8,7 @@ class VoyageClientWrapper:
     def __init__(self, api_key, proxy_url=None):
         self.api_key = api_key
         self.proxy_url = proxy_url
-        self._setup_selective_proxy()
         self.client = voyageai.Client(api_key=api_key)
-
-    def _setup_selective_proxy(self):
-        """Настраивает прокси только для Voyage AI"""
-        if not self.proxy_url:
-            return
 
         # Создаем кастомный адаптер с прокси
         class VoyageProxyAdapter(requests.adapters.HTTPAdapter):

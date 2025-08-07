@@ -12,7 +12,7 @@ logger = get_logger(name=__name__)
 
 
 class ElasticsearchService:
-    """Сервис для работы с Elasticsearch для товаров"""
+    """Полный сервис для работы с Elasticsearch для товаров"""
 
     def __init__(self):
         self.es = None
@@ -23,8 +23,8 @@ class ElasticsearchService:
     def connect(self, hosts: List[str] = None, retry: bool = True) -> bool:
         """Подключение к Elasticsearch с retry логикой"""
         if hosts is None:
-            es_host = getattr(settings, 'ELASTICSEARCH_HOST', 'localhost')
-            es_port = getattr(settings, 'ELASTICSEARCH_PORT', '9200')
+            es_host = settings.ELASTICSEARCH_HOST
+            es_port = settings.ELASTICSEARCH_PORT
             hosts = [f'http://{es_host}:{es_port}']
 
         logger.info(f"Attempting to connect to Elasticsearch: {hosts}")
@@ -75,21 +75,12 @@ class ElasticsearchService:
         except Exception:
             return False
 
-    def ensure_connection(self) -> bool:
-        """Обеспечение подключения с повторными попытками"""
-        if self.is_connected():
-            return True
-
-        logger.info("Elasticsearch connection lost, attempting to reconnect...")
-        return self.connect(retry=True)
-
     def create_index(self, index_name: str = "products") -> bool:
         """Создание индекса для товаров"""
         if not self.ensure_connection():
             logger.error("Cannot create index: Elasticsearch not connected")
             return False
 
-        # ИСПРАВЛЕННЫЙ mapping без поля _id
         mapping = {
             "settings": {
                 "number_of_shards": 1,
@@ -242,15 +233,15 @@ class ElasticsearchService:
             # Удаляем индекс если он существует
             if self.es.indices.exists(index=index_name):
                 self.es.indices.delete(index=index_name)
-                logger.info(f"Существующий индекс {index_name} удален")
+                logger.info(f"Существующий es-индекс {index_name} удален")
 
             # Создаем новый индекс
             self.es.indices.create(index=index_name, body=mapping)
-            logger.info(f"✅ Индекс {index_name} успешно создан")
+            logger.info(f"es-индекс {index_name} успешно создан")
             return True
 
         except Exception as e:
-            logger.error(f"❌ Ошибка создания индекса {index_name}: {e}")
+            logger.error(f"Ошибка создания индекса {index_name}: {e}")
             return False
 
     def _extract_document_id(self, product_data: Dict[str, Any]) -> Optional[str]:
@@ -334,72 +325,6 @@ class ElasticsearchService:
                 continue
 
         return cleaned_data
-
-    def diagnose_products_data(self, products: List[Dict[str, Any]], sample_size: int = 5) -> Dict[str, Any]:
-        """Диагностика структуры данных товаров"""
-        if not products:
-            return {"error": "Список товаров пуст"}
-
-        diagnosis = {
-            "total_products": len(products),
-            "sample_products": [],
-            "common_fields": {},
-            "problematic_fields": [],
-            "data_types": {},
-        }
-
-        # Анализируем образцы товаров
-        for i, product in enumerate(products[:sample_size]):
-            sample_info = {
-                "index": i,
-                "fields_count": len(product),
-                "has_id": "_id" in product,
-                "id_type": str(type(product.get("_id", "None"))),
-                "fields": list(product.keys())
-            }
-
-            # Проверяем ID
-            if "_id" in product:
-                _id = product["_id"]
-                if isinstance(_id, ObjectId):
-                    sample_info["id_value"] = f"ObjectId({str(_id)})"
-                elif isinstance(_id, dict):
-                    sample_info["id_value"] = str(_id)
-                else:
-                    sample_info["id_value"] = str(_id)
-
-            # Проверяем размер данных
-            try:
-                import json
-                data_size = len(json.dumps(product, default=str))
-                sample_info["data_size_bytes"] = data_size
-                if data_size > 1000000:  # 1MB
-                    diagnosis["problematic_fields"].append(f"Товар {i}: слишком большой размер ({data_size} байт)")
-            except Exception as e:
-                sample_info["serialization_error"] = str(e)
-                diagnosis["problematic_fields"].append(f"Товар {i}: ошибка сериализации - {e}")
-
-            diagnosis["sample_products"].append(sample_info)
-
-        # Собираем статистику по полям
-        all_fields = set()
-        for product in products[:100]:  # Анализируем первые 100
-            all_fields.update(product.keys())
-
-        for field in all_fields:
-            field_types = set()
-            field_count = 0
-            for product in products[:100]:
-                if field in product:
-                    field_count += 1
-                    field_types.add(str(type(product[field])))
-
-            diagnosis["common_fields"][field] = {
-                "presence_rate": f"{field_count}/100",
-                "types": list(field_types)
-            }
-
-        return diagnosis
 
     def _convert_objectids_to_strings(self, data: Any) -> Any:
         """Рекурсивно преобразует ObjectId в строки"""
@@ -556,13 +481,142 @@ class ElasticsearchService:
             "total": total_products
         }
 
+    def search_products_by_title(self,
+                                 query: str,
+                                 size: int = 10,
+                                 from_: int = 0,
+                                 index_name: str = "products") -> Dict[str, Any]:
+        """Поиск товаров только по названию, бренду, описанию и артикулу"""
+        if not self.ensure_connection():
+            logger.error("Cannot search products by title: Elasticsearch not connected")
+            return {"total": 0, "products": [], "took": 0}
+
+        if not query or not query.strip():
+            logger.warning("Пустой поисковый запрос для поиска по названию")
+            return {"total": 0, "products": [], "took": 0}
+
+        try:
+            search_query = {
+                "multi_match": {
+                    "query": query.strip(),
+                    "fields": [
+                        "title^3",  # Название товара - наивысший приоритет
+                        "brand^2",  # Бренд - высокий приоритет
+                        "description^1.5",  # Описание - средний приоритет
+                        "article"  # Артикул - обычный приоритет
+                    ],
+                    "type": "best_fields",
+                    "fuzziness": "AUTO"
+                }
+            }
+
+            full_query = {
+                "query": search_query,
+                "size": size,
+                "from": from_,
+                "sort": [
+                    {"_score": {"order": "desc"}},
+                    {"created_at": {"order": "desc"}}
+                ]
+            }
+
+            response = self.es.search(index=index_name, body=full_query)
+
+            total = response['hits']['total']
+            if isinstance(total, dict):
+                total_value = total.get('value', 0)
+            else:
+                total_value = total
+
+            return {
+                "total": total_value,
+                "products": [hit['_source'] for hit in response['hits']['hits']],
+                "took": response['took']
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка поиска товаров по названию: {e}")
+            return {"total": 0, "products": [], "took": 0}
+
+    def search_products_by_attributes_text(self,
+                                           query: str,
+                                           size: int = 10,
+                                           from_: int = 0,
+                                           index_name: str = "products") -> Dict[str, Any]:
+        """Поиск товаров только по текстовым значениям характеристик"""
+        if not self.ensure_connection():
+            logger.error("Cannot search products by attributes: Elasticsearch not connected")
+            return {"total": 0, "products": [], "took": 0}
+
+        if not query or not query.strip():
+            logger.warning("Пустой поисковый запрос для поиска по характеристикам")
+            return {"total": 0, "products": [], "took": 0}
+
+        try:
+            search_query = {
+                "nested": {
+                    "path": "attributes",
+                    "query": {
+                        "match": {
+                            "attributes.attr_value": {
+                                "query": query.strip(),
+                                "fuzziness": "AUTO"
+                            }
+                        }
+                    },
+                    "inner_hits": {}  # Показывать какие именно атрибуты совпали
+                }
+            }
+
+            full_query = {
+                "query": search_query,
+                "size": size,
+                "from": from_,
+                "sort": [
+                    {"_score": {"order": "desc"}},
+                    {"created_at": {"order": "desc"}}
+                ]
+            }
+
+            response = self.es.search(index=index_name, body=full_query)
+
+            total = response['hits']['total']
+            if isinstance(total, dict):
+                total_value = total.get('value', 0)
+            else:
+                total_value = total
+
+            # Добавляем информацию о совпавших атрибутах
+            products = []
+            for hit in response['hits']['hits']:
+                product = hit['_source'].copy()
+
+                # Добавляем информацию о совпавших атрибутах
+                if 'inner_hits' in hit and 'attributes' in hit['inner_hits']:
+                    matched_attributes = []
+                    for inner_hit in hit['inner_hits']['attributes']['hits']['hits']:
+                        matched_attributes.append(inner_hit['_source'])
+                    product['_matched_attributes'] = matched_attributes
+
+                products.append(product)
+
+            return {
+                "total": total_value,
+                "products": products,
+                "took": response['took']
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка поиска товаров по характеристикам: {e}")
+            return {"total": 0, "products": [], "took": 0}
+
     def search_products(self,
                         query: str = None,
                         filters: Dict[str, Any] = None,
                         size: int = 10,
                         from_: int = 0,
                         index_name: str = "products") -> Dict[str, Any]:
-        """Поиск товаров"""
+        """Обобщенный поиск товаров (для обратной совместимости)"""
         if not self.ensure_connection():
             logger.error("Cannot search products: Elasticsearch not connected")
             return {"total": 0, "products": [], "took": 0}
@@ -654,7 +708,7 @@ class ElasticsearchService:
                              size: int = 10,
                              exact_match: bool = False,
                              index_name: str = "products") -> Dict[str, Any]:
-        """Поиск товаров по атрибутам"""
+        """Поиск товаров по конкретным атрибутам (ключ-значение)"""
         if not self.ensure_connection():
             logger.error("Cannot search by attributes: Elasticsearch not connected")
             return {"total": 0, "products": [], "took": 0}
@@ -819,6 +873,189 @@ class ElasticsearchService:
         except Exception as e:
             logger.error(f"❌ Ошибка очистки индекса {index_name}: {e}")
             return False
+
+    def diagnose_products_data(self, products: List[Dict[str, Any]], sample_size: int = 5) -> Dict[str, Any]:
+        """Диагностика структуры данных товаров"""
+        if not products:
+            return {"error": "Список товаров пуст"}
+
+        diagnosis = {
+            "total_products": len(products),
+            "sample_products": [],
+            "common_fields": {},
+            "problematic_fields": [],
+            "data_types": {},
+        }
+
+        # Анализируем образцы товаров
+        for i, product in enumerate(products[:sample_size]):
+            sample_info = {
+                "index": i,
+                "fields_count": len(product),
+                "has_id": "_id" in product,
+                "id_type": str(type(product.get("_id", "None"))),
+                "fields": list(product.keys())
+            }
+
+            # Проверяем ID
+            if "_id" in product:
+                _id = product["_id"]
+                if isinstance(_id, ObjectId):
+                    sample_info["id_value"] = f"ObjectId({str(_id)})"
+                elif isinstance(_id, dict):
+                    sample_info["id_value"] = str(_id)
+                else:
+                    sample_info["id_value"] = str(_id)
+
+            # Проверяем размер данных
+            try:
+                import json
+                data_size = len(json.dumps(product, default=str))
+                sample_info["data_size_bytes"] = data_size
+                if data_size > 1000000:  # 1MB
+                    diagnosis["problematic_fields"].append(f"Товар {i}: слишком большой размер ({data_size} байт)")
+            except Exception as e:
+                sample_info["serialization_error"] = str(e)
+                diagnosis["problematic_fields"].append(f"Товар {i}: ошибка сериализации - {e}")
+
+            diagnosis["sample_products"].append(sample_info)
+
+        # Собираем статистику по полям
+        all_fields = set()
+        for product in products[:100]:  # Анализируем первые 100
+            all_fields.update(product.keys())
+
+        for field in all_fields:
+            field_types = set()
+            field_count = 0
+            for product in products[:100]:
+                if field in product:
+                    field_count += 1
+                    field_types.add(str(type(product[field])))
+
+            diagnosis["common_fields"][field] = {
+                "presence_rate": f"{field_count}/100",
+                "types": list(field_types)
+            }
+
+        return diagnosis
+
+    def get_aggregations(self, field: str, size: int = 20, index_name: str = "products") -> Dict[str, Any]:
+        """Получение агрегации по указанному полю"""
+        if not self.ensure_connection():
+            logger.error("Cannot get aggregations: Elasticsearch not connected")
+            return {"error": "Elasticsearch not connected"}
+
+        try:
+            query = {
+                "size": 0,
+                "aggs": {
+                    f"{field}_agg": {
+                        "terms": {
+                            "field": field,
+                            "size": size
+                        }
+                    }
+                }
+            }
+
+            response = self.es.search(index=index_name, body=query)
+
+            aggregations = []
+            for bucket in response['aggregations'][f'{field}_agg']['buckets']:
+                aggregations.append({
+                    "key": bucket['key'],
+                    "count": bucket['doc_count']
+                })
+
+            return {
+                "field": field,
+                "aggregations": aggregations,
+                "total_unique_values": len(aggregations)
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения агрегации для поля {field}: {e}")
+            return {"error": str(e)}
+
+    def get_price_range_stats(self, index_name: str = "products") -> Dict[str, Any]:
+        """Получение статистики по ценам"""
+        if not self.ensure_connection():
+            logger.error("Cannot get price stats: Elasticsearch not connected")
+            return {"error": "Elasticsearch not connected"}
+
+        try:
+            query = {
+                "size": 0,
+                "aggs": {
+                    "price_stats": {
+                        "nested": {
+                            "path": "suppliers.supplier_offers"
+                        },
+                        "aggs": {
+                            "price_range": {
+                                "stats": {
+                                    "field": "suppliers.supplier_offers.price.price"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            response = self.es.search(index=index_name, body=query)
+
+            price_stats = response['aggregations']['price_stats']['price_range']
+
+            return {
+                "min": price_stats.get('min'),
+                "max": price_stats.get('max'),
+                "avg": price_stats.get('avg'),
+                "count": price_stats.get('count', 0)
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики цен: {e}")
+            return {"error": str(e)}
+
+    def update_product(self, product_id: str, update_data: Dict[str, Any], index_name: str = "products") -> bool:
+        """Обновление товара по ID"""
+        if not self.ensure_connection():
+            logger.error("Cannot update product: Elasticsearch not connected")
+            return False
+
+        if not product_id:
+            logger.error("Product ID не может быть пустым")
+            return False
+
+        try:
+            # Подготавливаем данные для обновления
+            prepared_data = self._prepare_product_data(update_data)
+
+            response = self.es.update(
+                index=index_name,
+                id=product_id,
+                body={"doc": prepared_data}
+            )
+
+            logger.info(f"✅ Товар {product_id} обновлен: {response['result']}")
+            return True
+
+        except NotFoundError:
+            logger.warning(f"Товар {product_id} не найден для обновления")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Ошибка обновления товара {product_id}: {e}")
+            return False
+
+    def close(self):
+        """Закрытие соединения с Elasticsearch"""
+        if self.es:
+            try:
+                self.es.close()
+                logger.info("✅ Соединение с Elasticsearch закрыто")
+            except Exception as e:
+                logger.error(f"❌ Ошибка при закрытии соединения с Elasticsearch: {e}")
 
 
 # Глобальный экземпляр

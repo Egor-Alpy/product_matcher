@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     ELASTICSEARCH_HOST: str = 'localhost'
     ELASTICSEARCH_PORT: str = '9200'
     ELASTICSEARCH_INDEX: str = 'products'
+    ES_HOSTS: str = "http://localhost:9200"
+    ES_REQUEST_TIMEOUT: int = 30
+    ES_MAX_RETRIES: int = 3
+    ES_RETRY_ON_TIMEOUT: bool = True
+    ES_SNIFF_ON_START: bool = True
+    ES_SNIFF_ON_CONNECTION_FAIL: bool = True
+    ES_SNIFFER_TIMEOUT: int = 60
 
     # Настройка подключения к MongoDB
     MONGO_HOST: str = 'localhost'

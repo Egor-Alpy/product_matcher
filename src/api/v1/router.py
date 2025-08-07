@@ -1,8 +1,8 @@
-from src.api.v1.endpoints import health, data
+from src.api.v1.endpoints import health, data, search
 
 from fastapi import APIRouter
 
-router_modules = [health, data]
+router_modules = [health, data, search]
 
 router = APIRouter(prefix="/v1")
 
