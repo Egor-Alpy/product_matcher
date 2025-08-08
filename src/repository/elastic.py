@@ -44,7 +44,7 @@ class ElasticSearch:
         except Exception:
             return False
 
-    def create_index(self, index_name: str = settings.ELASTICSEARCH_INDEX) -> bool:
+    def create_index(self, index_name: Optional[str] = settings.ELASTICSEARCH_INDEX) -> bool:
         """Создание индекса для товаров"""
         if not self.is_connected():
             logger.error("Не удается подключиться к ES!")
@@ -56,26 +56,17 @@ class ElasticSearch:
                 "number_of_replicas": 0,
                 "analysis": {
                     "analyzer": {
-                        "russian_analyzer": {
+                        "russian_analyzer": {  # для обычного поиска
                             "type": "custom",
                             "tokenizer": "standard",
                             "filter": [
                                 "lowercase",
                                 "asciifolding",
                                 "russian_stop",
-                                "russian_stemmer"
+                                "russian_stemmer",
                             ]
                         },
-                        "autocomplete_analyzer": {
-                            "type": "custom",
-                            "tokenizer": "standard",
-                            "filter": [
-                                "lowercase",
-                                "asciifolding",
-                                "edge_ngram_filter"
-                            ]
-                        },
-                        "autocomplete_search": {
+                        "fuzzy_analyzer": {  # для fuzzy — без стеммера и стоп-слов
                             "type": "custom",
                             "tokenizer": "standard",
                             "filter": [
@@ -92,11 +83,6 @@ class ElasticSearch:
                         "russian_stemmer": {
                             "type": "stemmer",
                             "language": "russian"
-                        },
-                        "edge_ngram_filter": {
-                            "type": "edge_ngram",
-                            "min_gram": 2,
-                            "max_gram": 20
                         }
                     }
                 }
@@ -107,12 +93,10 @@ class ElasticSearch:
                         "type": "text",
                         "analyzer": "russian_analyzer",
                         "fields": {
-                            "keyword": {
-                                "type": "keyword"
-                            },
-                            "autocomplete": {
+                            "keyword": {"type": "keyword"},
+                            "fuzzy": {  # добавлено для неточного поиска
                                 "type": "text",
-                                "analyzer": "autocomplete_analyzer"
+                                "analyzer": "fuzzy_analyzer"
                             }
                         }
                     },
@@ -120,12 +104,10 @@ class ElasticSearch:
                         "type": "text",
                         "analyzer": "russian_analyzer",
                         "fields": {
-                            "keyword": {
-                                "type": "keyword"
-                            },
-                            "autocomplete": {
+                            "keyword": {"type": "keyword"},
+                            "fuzzy": {  # добавлено для неточного поиска
                                 "type": "text",
-                                "analyzer": "autocomplete_analyzer"
+                                "analyzer": "fuzzy_analyzer"
                             },
                             "numeric": {
                                 "type": "double",
@@ -133,12 +115,8 @@ class ElasticSearch:
                             }
                         }
                     },
-                    "entity_id": {
-                        "type": "keyword"
-                    },
-                    "entity_type": {
-                        "type": "keyword"
-                    }
+                    "entity_id": {"type": "keyword"},
+                    "entity_type": {"type": "keyword"}
                 }
             }
         }
@@ -173,33 +151,44 @@ class ElasticSearch:
         return self.es_client.indices.exists(index=index_name)
 
     def search_document(self, index_name: str, query: dict[str, str]):
+        """обычный поиск документов"""
+        # Поиск по названию характеристики
         query_body = {
               "query": {
                 "simple_query_string": {
                   "query": f"{list(query.keys())[0]}",
-                  "fields": ["*", "*.value"],
+                  "fields": ["*"],
                   "default_operator": "or"
                 }
               }
             }
+        # # Поиск по значениям и названию характеристики
+        # query_body = {
+        #       "query": {
+        #         "simple_query_string": {
+        #           "query": f"{list(query.keys())[0]}",
+        #           "fields": ["*", "*.value"],
+        #           "default_operator": "or"
+        #         }
+        #       }
+        #     }
         logger.info(f"query: {query_body}")
         response = self.es_client.search(index=index_name, body=query_body)
         logger.info(f"RESPONSE: {response}")
         return response
 
     def search_document_fuzzy(self, index_name: str, query: dict[str, str]):
-
+        """нечеткий поиск документов"""
         query_body = {
-              "query": {
-                "match": {
-                  "attr_name": {
+            "query": {
+                "multi_match": {
                     "query": f"{list(query.keys())[0]}",
-                    "fuzziness": "AUTO",
-                    "minimum_should_match": "30%"
-                  }
+                    "fields": ["attr_name.fuzzy"],
+                    "fuzziness": "AUTO"
                 }
-              }
             }
+        }
+
         logger.info(f"query: {query_body}")
         response = self.es_client.search(index=index_name, body=query_body)
         logger.info(f"RESPONSE: {response}")
@@ -231,3 +220,37 @@ class ElasticSearch:
             }
         except Exception as e:
             return f"Ошибка: {e}"
+
+    def delete_all_indexes(self):
+        """удалить все индексы"""
+        try:
+            # Получаем список всех индексов через низкоуровневый клиент
+            indices_response = self.es_client.cat.indices(format='json')
+
+            if not indices_response:
+                logger.info("Индексы не найдены")
+                return None
+
+            # Извлекаем имена индексов
+            index_names = [index['index'] for index in indices_response]
+
+            logger.info(f"Найдено {len(index_names)} индексов:")
+            for name in index_names:
+                logger.info(f"  - {name}")
+
+            # Удаляем каждый индекс отдельно
+            deleted_count = 0
+            for index_name in index_names:
+                try:
+                    self.es_client.indices.delete(index=index_name)
+                    logger.info(f"✓ Удален: {index_name}")
+                    deleted_count += 1
+                except Exception as e:
+                    logger.error(f"✗ Ошибка при удалении {index_name}: {e}")
+
+            logger.info(f"Итого удалено: {deleted_count} из {len(index_names)} индексов")
+            return None
+
+        except Exception as e:
+            logger.error(f"Ошибка при удалении всех индексов: {e}")
+            return None

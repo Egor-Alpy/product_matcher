@@ -12,6 +12,8 @@ class ElasticService:
         self.mongo_client = MongoClient()
 
     async def create_category_indexes(self):
+        """Создать индексы под каждую категорию"""
+
         categories_data = await mongo_client.get_all_categories()
 
         for category_data in categories_data:
@@ -24,11 +26,10 @@ class ElasticService:
         logger.info(f"Индексы для всех категорий успешно созданы!")
 
     def insert_documents(self, index_name: str, category_data: dict):
+        """Вставить данные в индекс ЭС"""
 
         category_attrs = category_data['result']['parameters']
-
         for attr in category_attrs:
-
             if attr['type'] != "ENUM" or attr.get('values') is None:
                 continue
 
@@ -38,6 +39,8 @@ class ElasticService:
                 self.es_client.add_document(index_name=index_name, document=document)
 
     async def search_es(self, category_id: int, search_query):
+        """Выполнить поиск в индексе ЭС по id категории"""
+
         try:
             index_name = str(category_id)
             if not self.es_client.is_index_exists(index_name=index_name):
@@ -58,6 +61,8 @@ class ElasticService:
         return None
 
     async def search_es_fuzzy(self, category_id: int, search_query):
+        """Мягкий поиск документа в ЭС"""
+
         try:
             index_name = str(category_id)
             if not self.es_client.is_index_exists(index_name=index_name):
@@ -76,6 +81,27 @@ class ElasticService:
         except Exception as e:
             logger.error(f"Не удалось выполнить поиск! | {e}")
         return None
+
+    async def delete_all_indexes(self):
+        """Удалить все индексы эластика"""
+
+        try:
+            response = self.es_client.delete_all_indexes()
+            return response
+        except Exception as e:
+            logger.error(f"Ошибка при удалении индексов эластика: {e}")
+            return None
+
+    async def create_index(self, index_name: str):
+        """Создать индекс эластика"""
+
+        try:
+            response = self.es_client.create_index(index_name=index_name)
+            return response
+        except Exception as e:
+            logger.error(f"Ошибка при создании индекса эластика [{index_name}]: {e}")
+            return None
+ё
 
 
 

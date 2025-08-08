@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     """
 
     # Общие
-    PROJECT_NAME: str = "Product Matcher"  # Название проекта
-    PROJECT_DESC: str = 'Сервис для подбора товаров из бд товарам из тендера. (ElasticSearch для поиска, БД с нормализованными характеристиками)'
+    PROJECT_NAME: str = "Bool Attrs Normalizer Service"  # Название проекта
+    PROJECT_DESC: str = 'Сервис для стандартизации булевых значений. (ElasticSearch для поиска, БД с нормализованными характеристиками)'
     PROJECT_VERSION: str = '1.0.0'
     SOFTWARE_RESTART_TIME: int = 15  # Время (в СЕКУНДАХ) автоматического перезапуска софта после падения
 

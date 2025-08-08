@@ -1,4 +1,3 @@
-import logging
 from motor.motor_asyncio import AsyncIOMotorClient
 from src.config.config import settings
 from src.core.logger import get_logger
@@ -17,7 +16,6 @@ class MongoClient:
         mongo_db_name = settings.MONGO_DB_NAME
         self.client = AsyncIOMotorClient(settings.get_mongo_connection_link)
         self.database = self.client[mongo_db_name]
-        self._collection = self.database[settings.MONGO_COLLECTION_NAME_YNDX_CATEGORIES]
         logger.info(f"MongoDB подключен: {mongo_db_name}")
 
     async def disconnect(self):
@@ -38,5 +36,8 @@ class MongoClient:
         )
         return cursor
 
+    async def get_all_products(self, collection_name: str):
+        """Получаем все товары из конкретной коллекции монго"""
+        pass
 
 mongo_client = MongoClient()

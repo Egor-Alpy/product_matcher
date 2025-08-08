@@ -7,7 +7,6 @@ router = APIRouter()
 # Корневой endpoint вызывающийся при переходе по адресу сервиса
 @router.get("/", tags=["Root"])
 async def root():
-    return {"message": "Category Match Service"}
-
+    return {"message": "Bool Attrs Normalizer Service"}
 
 router.include_router(v1_router, prefix='/api')

@@ -5,8 +5,12 @@
 
 ---
 
-## Как пользоватьсчя
-mt
+## Как пользоваться API Swagger
+- GET /api/v1/healthz - Проверка здоровья сервиса для Кубернетис;
+- GET /api/v1/search/search_es - Поиск товара по строгому синтаксису;
+- GET /api/v1/search/search_es_fuzzy - Поиск товара по нестрогому синтаксису;
+- DELETE /api/v1/data/delete_all_indexes - Удалить все индексы из ElasticSearch;
+
 
 ## Основные слои репозитория
 - api

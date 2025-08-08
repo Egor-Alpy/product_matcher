@@ -37,9 +37,9 @@ async def lifespan(app: FastAPI):
         logger.info("🔄 Остановка приложения...")
 
         # Закрываем соединение с Elasticsearch
-        if elastic_search.es:
+        if elastic_search.es_client:
             try:
-                elastic_search.es.close()
+                elastic_search.es_client.close()
                 logger.info("✅ Соединение с Elasticsearch закрыто")
             except Exception as e:
                 logger.error(f"❌ Ошибка при закрытии соединения с Elasticsearch: {e}")

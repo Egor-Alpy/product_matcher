@@ -6,7 +6,7 @@ router = APIRouter(tags=["Search"], prefix="/search")
 
 
 @router.post("/search_es")
-async def search_es(category_id: int, search_query: dict[str, str]):
+async def search_es(category_id: int, search_query: dict[str, str], offset: int = 1):
     """Поиск attr and value в Elasticsearch"""
     try:
         if not elastic_search.es_client:
@@ -16,7 +16,7 @@ async def search_es(category_id: int, search_query: dict[str, str]):
 
         return {
             "success": True,
-            "details": response
+            "details": response[:offset]
         }
 
     except Exception as e:
